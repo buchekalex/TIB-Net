@@ -26,7 +26,7 @@ import numpy as np
 from . import mobilefacenet
 
 
-def upsample(in_channels, out_channels):  # should use F.inpterpolate
+def upsample(in_channels, out_channels):  # should use F.interpolate
     return nn.Sequential(
         nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=(3, 3),
                   stride=1, padding=1, groups=in_channels, bias=False),
@@ -36,14 +36,6 @@ def upsample(in_channels, out_channels):  # should use F.inpterpolate
         nn.ReLU()
     )
 
-
-    def forward(self, x):
-        raw = x
-        avg_out = torch.mean(x, dim=1, keepdim=True)
-        max_out, _ = torch.max(x, dim=1, keepdim=True)
-        x = torch.cat([avg_out, max_out], dim=1)
-        x = self.conv1(x)
-        return raw*self.sigmoid(x)
 
 class TibNet(nn.Module):
     """
@@ -73,7 +65,7 @@ class TibNet(nn.Module):
         self.conf = nn.ModuleList(head[1])
         if self.phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
-            self.detect = Detect(cfg)
+            self.detect = Detect
 
     def forward(self, x):
         """
@@ -87,36 +79,36 @@ class TibNet(nn.Module):
 
         # cyclic pathway
         for k in range(6):
-            if(k == 2):
+            if (k == 2):
                 before = x
             x = self.base[k](x)
         s1 = x
         for k in range(2, 6):
-            if(k == 3):
+            if (k == 3):
                 x += nn.Conv2d(64, 64, kernel_size=(3, 3),
                                stride=2, padding=1).cuda()(before)
             x = self.base[k](x)
         s2 = x
         for k in range(2, 6):
-            if(k == 3):
+            if (k == 3):
                 x += nn.Conv2d(64, 64, kernel_size=(3, 3),
                                stride=4, padding=1).cuda()(before)
             x = self.base[k](x)
         s3 = x
         for k in range(2, 6):
-            if(k == 3):
+            if (k == 3):
                 x += nn.Conv2d(64, 64, kernel_size=(3, 3),
                                stride=8, padding=1).cuda()(before)
             x = self.base[k](x)
         s4 = x
         for k in range(2, 6):
-            if(k == 3):
+            if (k == 3):
                 x += nn.Conv2d(64, 64, kernel_size=(3, 3),
                                stride=16, padding=1).cuda()(before)
             x = self.base[k](x)
         s5 = x
         for k in range(2, 6):
-            if(k == 3):
+            if (k == 3):
                 x += nn.Conv2d(64, 64, kernel_size=(3, 3),
                                stride=32, padding=1).cuda()(before)
             x = self.base[k](x)
@@ -164,11 +156,11 @@ class TibNet(nn.Module):
         conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)
 
         if self.phase == 'test':
-            output = self.detect(
+            output = self.detect.apply(
                 loc.view(loc.size(0), -1, 4),  # loc preds
-                self.softmax(conf.view(conf.size(0), -1,
-                                       self.num_classes)),  # conf preds
-                self.priors.type(type(x.data))  # default boxes
+                self.softmax(conf.view(conf.size(0), -1, self.num_classes)),  # conf preds
+                self.priors.type(type(x.data)),  # default boxes
+                cfg  # pass configuration
             )
         else:
             output = (
@@ -194,13 +186,15 @@ class TibNet(nn.Module):
 
     def weights_init(self, m):
         if isinstance(m, nn.Conv2d):
-            init.xavier_uniform(m.weight.data)
+            init.xavier_uniform_(m.weight.data)
             if torch.is_tensor(m.bias):
                 m.bias.data.zero_()
+
 
 def basenet():
     net = mobilefacenet.MobileFaceNet64_SA()
     return nn.ModuleList(net.features)
+
 
 def multibox(basenet, num_classes):
     loc_layers = []
@@ -211,13 +205,14 @@ def multibox(basenet, num_classes):
     feature_dim += [basenet[0][-3].out_channels]
     for idx in net_source:
         feature_dim += [basenet[idx].conv[-2].out_channels]
-    
+
     loc_layers += [nn.Conv2d(feature_dim[0], 4, kernel_size=3, padding=1)]
     conf_layers += [nn.Conv2d(feature_dim[0], 3 + (num_classes - 1), kernel_size=3, padding=1)]
     for v in feature_dim[1:]:
         loc_layers += [nn.Conv2d(v, 4, kernel_size=3, padding=1)]
-        conf_layers += [nn.Conv2d(v,num_classes, kernel_size=3, padding=1)]
+        conf_layers += [nn.Conv2d(v, num_classes, kernel_size=3, padding=1)]
     return basenet[:6], (loc_layers, conf_layers)
+
 
 def build_tibnet(phase, num_classes=2):
     base_, head_ = multibox(basenet(), num_classes)
