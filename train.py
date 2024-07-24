@@ -103,6 +103,10 @@ if not os.path.exists(save_folder):
 
 print('load dataset...')
 train_dataset, val_dataset = dataset_factory(args.dataset)
+# Debug prints
+print(f"Number of training samples: {len(train_dataset)}")
+print(f"Number of validation samples: {len(val_dataset)}")
+
 train_loader = data.DataLoader(train_dataset, args.batch_size,
                                num_workers=args.num_workers,
                                shuffle=True,
@@ -114,6 +118,9 @@ val_loader = data.DataLoader(val_dataset, val_batchsize,
                              shuffle=False,
                              collate_fn=detection_collate,
                              pin_memory=True)
+
+print(f"Training loader samples: {len(train_loader.dataset)}")
+print(f"Validation loader samples: {len(val_loader.dataset)}")
 
 min_loss = np.inf
 
